@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="OpenCart Test Suite" verbose="1">
+    <test name="OpenCart Automation Tests" preserve-order="true">
+        <classes>
+<!--            &lt;!&ndash; Prueba 1: Registro de Usuarios &ndash;&gt;-->
+<!--            <class name="com.demoblaze.test.RegistroUsuarioTest"/>-->
+        </classes>
+    </test>
+</suite>
