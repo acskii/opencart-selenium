@@ -10,240 +10,215 @@ import java.util.List;
 
 public class RegisterPage extends BasePage {
 
-    private static final String BASE_URL     = "http://localhost/opencart-4.1.0.4/upload/";
-    private static final String REGISTER_URL = BASE_URL + "index.php?route=account/register";
+    private static final String BASE_URL       = "http://localhost/opencart-4.1.0.4/upload/";
+    private static final String REGISTER_URL   = BASE_URL + "index.php?route=account/register";
+    private static final String NEWSLETTER_URL = BASE_URL + "index.php?route=account/newsletter";
 
-    // ---- Form fields ----
-    @FindBy(name = "firstname")     private WebElement firstNameInput;
-    @FindBy(name = "lastname")      private WebElement lastNameInput;
-    @FindBy(name = "email")         private WebElement emailInput;
-    @FindBy(name = "password")      private WebElement passwordInput;
-    @FindBy(name = "agree")         private WebElement privacyPolicyCheckbox;
+    @FindBy(name = "firstname")        private WebElement firstNameInput;
+    @FindBy(name = "lastname")         private WebElement lastNameInput;
+    @FindBy(name = "email")            private WebElement emailInput;
+    @FindBy(name = "password")         private WebElement passwordInput;
+    @FindBy(name = "agree")            private WebElement privacyPolicyCheckbox;
+    @FindBy(id   = "input-newsletter") private WebElement newsletterCheckbox;
 
-    // The submit is a <button type="submit">Continue</button>, not <input value="Continue">
     @FindBy(xpath = "//button[@type='submit' and normalize-space(.)='Continue']")
     private WebElement continueButton;
 
-    // Links shown on the success page / logout page (never on the register form)
     @FindBy(xpath = "//a[contains(normalize-space(text()), 'Continue')]")
     private WebElement continueButtonAfterSuccess;
 
-    @FindBy(css = "a.btn.btn-primary")
-    private WebElement continuePrimaryButton;
+    @FindBy(css = "a.btn.btn-primary") private WebElement continuePrimaryButton;
 
-    // ---- Success markers ----
-    @FindBy(xpath = "//div[contains(@class, 'alert-success')]")
-    private WebElement successMessage;
+    @FindBy(xpath = "//div[contains(@class, 'alert-success')]")                private WebElement successMessage;
+    @FindBy(xpath = "//h1[contains(., 'Your Account Has Been Created')]")      private WebElement accountCreatedHeader;
+    @FindBy(xpath = "//div[@id='content']//p[contains(., 'successfully')]")    private WebElement accountCreatedText;
+    @FindBy(xpath = "//h1[contains(., 'Account Logout')]")                     private WebElement accountLogoutHeader;
 
-    @FindBy(xpath = "//h1[contains(., 'Your Account Has Been Created')]")
-    private WebElement accountCreatedHeader;
-
-    @FindBy(xpath = "//div[@id='content']//p[contains(., 'successfully created') or contains(., 'successfully')]")
-    private WebElement accountCreatedText;
-
-    @FindBy(xpath = "//h1[contains(., 'Account Logout')]")
-    private WebElement accountLogoutHeader;
-
-    // ---- Session helpers ----
     @FindBy(linkText = "My Account") private WebElement myAccountLink;
     @FindBy(linkText = "Logout")     private WebElement logoutLink;
 
-    public RegisterPage(WebDriver driver) {
-        super(driver);
-    }
+    /**
+     * Captures the last error/warning text observed right after a submit.
+     * Needed because OpenCart's #alert .alert-danger auto-dismisses after ~4 s;
+     * reading it again later (via getAnyErrorMessage) returns empty.
+     */
+    private String lastRegistrationError = "";
 
-    // ============================================================
+    public RegisterPage(WebDriver driver) { super(driver); }
+
+    public String getLastRegistrationError() { return lastRegistrationError; }
+    public void resetLastRegistrationError() { lastRegistrationError = ""; }
+
+    // ==================================================================
     // Navigation
-    // ============================================================
+    // ==================================================================
     public void navigateToRegisterPage() {
         navigateTo(REGISTER_URL);
         waitHelper.customWait(300);
-
         try {
             waitHelper.waitForElementToBeVisible(firstNameInput);
-            System.out.println("✓ Registration form loaded successfully");
+            System.out.println("✓ Registration form loaded");
         } catch (Exception e) {
-            System.out.println("⚠ Registration form not found, checking for an active session...");
-            try {
-                if (isElementDisplayed(logoutLink)) {
-                    System.out.println("⚠ Active session detected, logging out...");
-                    logoutAfterRegistration();
-                    navigateTo(REGISTER_URL);
-                    waitHelper.customWait(300);
-                    waitHelper.waitForElementToBeVisible(firstNameInput);
-                    System.out.println("✓ Registration form loaded after logout");
-                } else {
-                    throw e;
-                }
-            } catch (Exception ex) {
-                System.out.println("✗ Critical error reaching registration form");
-                throw ex;
-            }
+            if (isElementDisplayed(logoutLink)) {
+                logoutAfterRegistration();
+                navigateTo(REGISTER_URL);
+                waitHelper.waitForElementToBeVisible(firstNameInput);
+            } else throw e;
         }
         waitHelper.customWait(500);
     }
 
-    // ============================================================
-    // Form interaction
-    // ============================================================
-    public void fillRegistrationForm(String firstName, String lastName, String email, String password) {
-        writeTextIfNotEmpty(firstNameInput, firstName);
-        writeTextIfNotEmpty(lastNameInput,  lastName);
-        writeTextIfNotEmpty(emailInput,     email);
-        writeTextIfNotEmpty(passwordInput,  password);
+    public void navigateToNewsletterPage() {
+        navigateTo(NEWSLETTER_URL);
+        waitHelper.customWait(400);
+    }
+
+    // ==================================================================
+    // Form
+    // ==================================================================
+    public void fillRegistrationForm(String fn, String ln, String em, String pw) {
+        writeTextIfNotEmpty(firstNameInput, fn);
+        writeTextIfNotEmpty(lastNameInput,  ln);
+        writeTextIfNotEmpty(emailInput,     em);
+        writeTextIfNotEmpty(passwordInput,  pw);
     }
 
     private void writeTextIfNotEmpty(WebElement el, String value) {
-        if (value != null && !value.isEmpty()) {
-            writeText(el, value);
-        }
+        if (value != null && !value.isEmpty()) writeText(el, value);
     }
 
-    /**
-     * Bypass HTML5 validation so malformed input reaches the server and
-     * produces a server-side field error (required for negative cases).
-     */
     public void disableHtml5Validation() {
         try {
             ((JavascriptExecutor) driver).executeScript(
-                    "var f = document.getElementById('form-register');" +
-                            "if (f) f.setAttribute('novalidate','novalidate');"
-            );
+                    "var f=document.getElementById('form-register');if(f)f.setAttribute('novalidate','novalidate');");
         } catch (Exception ignored) {}
     }
 
     public void acceptPrivacyPolicy() {
         try {
             scrollToElement(privacyPolicyCheckbox);
+            if (!privacyPolicyCheckbox.isSelected()) clickElement(privacyPolicyCheckbox);
             if (!privacyPolicyCheckbox.isSelected()) {
-                clickElement(privacyPolicyCheckbox);
+                ((JavascriptExecutor) driver).executeScript("arguments[0].click();", privacyPolicyCheckbox);
             }
-            if (!privacyPolicyCheckbox.isSelected()) {
-                ((JavascriptExecutor) driver).executeScript(
-                        "arguments[0].click();", privacyPolicyCheckbox);
-            }
-            if (privacyPolicyCheckbox.isSelected()) {
-                System.out.println("✓ Privacy policy accepted");
-            } else {
-                System.out.println("⚠ Could not accept privacy policy checkbox");
-            }
+            System.out.println(privacyPolicyCheckbox.isSelected()
+                    ? "✓ Privacy policy accepted" : "⚠ Privacy policy NOT accepted");
         } catch (Exception e) {
             System.out.println("⚠ Error accepting privacy policy: " + e.getMessage());
         }
     }
 
+    public void setNewsletterSubscription(boolean subscribe) {
+        try {
+            scrollToElement(newsletterCheckbox);
+            if (newsletterCheckbox.isSelected() != subscribe) clickElement(newsletterCheckbox);
+            if (newsletterCheckbox.isSelected() != subscribe) {
+                ((JavascriptExecutor) driver).executeScript("arguments[0].click();", newsletterCheckbox);
+            }
+            System.out.println("✓ Newsletter set to " + (subscribe ? "ON" : "OFF"));
+        } catch (Exception e) {
+            System.out.println("⚠ Could not set newsletter: " + e.getMessage());
+        }
+    }
+
+    public boolean isNewsletterSubscriptionOn() {
+        try { return newsletterCheckbox.isSelected(); }
+        catch (Exception e) { return false; }
+    }
+
+    // ==================================================================
+    // Continue – captures alert text before it fades
+    // ==================================================================
     public void clickContinue() {
+        lastRegistrationError = "";
         try { scrollToElement(continueButton); } catch (Exception ignored) {}
 
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 waitHelper.waitForElementToBeClickable(continueButton);
                 clickElement(continueButton);
-                waitHelper.customWait(500);
 
-                boolean movedToSuccess = isOnSuccessPage() || isElementDisplayed(continueButtonAfterSuccess);
-                boolean hasErrorNow    = isAnyErrorDisplayed();
-                if (movedToSuccess || hasErrorNow) {
-                    return;
+                // Poll aggressively (100 ms × 25 = 2.5 s) — bootstrap alert fades in ~3-4 s
+                for (int i = 0; i < 25; i++) {
+                    waitHelper.customWait(100);
+
+                    String err = getAnyErrorMessage();
+                    if (!err.isEmpty()) {
+                        lastRegistrationError = err;
+                        System.out.println("   [captured error] " + err);
+                        return;
+                    }
+                    if (isOnSuccessPage() || isElementDisplayed(continueButtonAfterSuccess)) {
+                        System.out.println("   [captured success]");
+                        return;
+                    }
                 }
             } catch (Exception e) {
-                try {
-                    ((JavascriptExecutor) driver).executeScript("arguments[0].click();", continueButton);
-                } catch (Exception ignored) {}
+                try { ((JavascriptExecutor) driver).executeScript("arguments[0].click();", continueButton); }
+                catch (Exception ignored) {}
             }
-            waitHelper.customWait(800);
+            waitHelper.customWait(300);
         }
     }
 
-    // ============================================================
-    // Error inspection — field-level + alert-level
-    // ============================================================
-
-    /**
-     * Returns the text of an OpenCart field error div (#error-{field}), or "" if
-     * none. The div always exists in the DOM; it becomes visible (display:block)
-     * only when a validation error is set.
-     */
+    // ==================================================================
+    // Error inspection
+    // ==================================================================
     public String getFieldErrorMessage(String fieldName) {
         try {
             WebElement err = driver.findElement(By.id("error-" + fieldName));
             if (err.isDisplayed()) {
-                String txt = err.getText();
-                return txt != null ? txt.trim() : "";
+                String t = err.getText();
+                return t != null ? t.trim() : "";
             }
         } catch (Exception ignored) {}
         return "";
     }
 
-    /**
-     * Concatenates every visible validation message on the page.
-     * Sources:
-     *  - #error-firstname / -lastname / -email / -password / -agree  (field-level)
-     *  - #alert .alert-danger / .alert-warning                        (global)
-     */
     public String getAnyErrorMessage() {
         StringBuilder sb = new StringBuilder();
-
-        for (String field : new String[]{"firstname", "lastname", "email", "password", "agree"}) {
-            String err = getFieldErrorMessage(field);
-            if (!err.isEmpty()) {
-                if (sb.length() > 0) sb.append(" | ");
-                sb.append(err);
-            }
+        for (String f : new String[]{"firstname", "lastname", "email", "password"}) {
+            String err = getFieldErrorMessage(f);
+            if (!err.isEmpty()) { if (sb.length() > 0) sb.append(" | "); sb.append(err); }
         }
-
         try {
             List<WebElement> alerts = driver.findElements(
                     By.cssSelector("#alert .alert-danger, #alert .alert-warning"));
-            for (WebElement alert : alerts) {
-                if (alert.isDisplayed()) {
-                    String txt = alert.getText();
-                    if (txt != null && !txt.trim().isEmpty()) {
+            for (WebElement a : alerts) {
+                if (a.isDisplayed()) {
+                    String t = a.getText();
+                    if (t != null && !t.trim().isEmpty()) {
                         if (sb.length() > 0) sb.append(" | ");
-                        sb.append(txt.trim());
+                        sb.append(t.trim());
                     }
                 }
             }
         } catch (Exception ignored) {}
-
         return sb.toString().trim();
     }
 
-    public boolean isAnyErrorDisplayed() {
-        return !getAnyErrorMessage().isEmpty();
-    }
+    public boolean isAnyErrorDisplayed() { return !getAnyErrorMessage().isEmpty(); }
 
-    /** Backwards-compatible alias, now field-error aware. */
-    public boolean isErrorMessageDisplayed() {
+    public boolean isWarningDisplayed() {
         try {
-            waitHelper.customWait(400);
-            boolean displayed = isAnyErrorDisplayed();
-            if (displayed) {
-                System.out.println("⚠ Validation error detected: " + getAnyErrorMessage());
-            }
-            return displayed;
-        } catch (Exception e) {
-            return false;
-        }
+            List<WebElement> ws = driver.findElements(
+                    By.cssSelector("#alert .alert-warning, #alert .alert-danger"));
+            for (WebElement w : ws) if (w.isDisplayed()) return true;
+        } catch (Exception ignored) {}
+        return false;
     }
 
-    /** Backwards-compatible getter, now returns everything. */
-    public String getErrorMessage() {
-        return getAnyErrorMessage();
-    }
+    public boolean isErrorMessageDisplayed() { return isAnyErrorDisplayed(); }
+    public String  getErrorMessage()         { return getAnyErrorMessage(); }
 
-    // ============================================================
-    // Success detection
-    // ============================================================
+    // ==================================================================
+    // Success / page state
+    // ==================================================================
     public boolean isSuccessMessageDisplayed() {
         try {
             waitHelper.customWait(800);
-            boolean displayed = isElementDisplayed(successMessage) || isOnSuccessPage();
-            if (displayed) System.out.println("✓ Registration success detected");
-            return displayed;
-        } catch (Exception e) {
-            return false;
-        }
+            return isElementDisplayed(successMessage) || isOnSuccessPage();
+        } catch (Exception e) { return false; }
     }
 
     private boolean isOnSuccessPage() {
@@ -261,206 +236,184 @@ public class RegisterPage extends BasePage {
         return "";
     }
 
-    /** True if the user is still looking at the register form (no redirect to success). */
     public boolean isStillOnRegisterForm() {
+        try { return getCurrentUrl().contains("route=account/register") && firstNameInput.isDisplayed(); }
+        catch (Exception e) { return false; }
+    }
+
+    public boolean isFormFieldsVisible() {
         try {
-            return getCurrentUrl().contains("route=account/register")
-                    && firstNameInput.isDisplayed();
+            return firstNameInput.isDisplayed() && lastNameInput.isDisplayed()
+                    && emailInput.isDisplayed() && passwordInput.isDisplayed()
+                    && continueButton.isDisplayed();
+        } catch (Exception e) { return false; }
+    }
+
+    // ==================================================================
+    // Newsletter subscription status (on /account/newsletter)
+    // ==================================================================
+    public boolean isNewsletterSubscribed() {
+        try {
+            WebElement cb = driver.findElement(By.id("input-newsletter"));
+            return cb.isSelected();
         } catch (Exception e) {
+            System.out.println("⚠ Could not read newsletter status: " + e.getMessage());
             return false;
         }
     }
 
-    // ============================================================
-    // Post-success / post-logout helpers
-    // ============================================================
+    // ==================================================================
+    // Orchestration
+    // ==================================================================
+    public boolean registerUser(String fn, String ln, String em, String pw) {
+        return registerUserWithOptions(fn, ln, em, pw, false, true, false);
+    }
+
+    public boolean registerUserWithOptions(String firstName, String lastName,
+                                           String email, String password,
+                                           boolean subscribeNewsletter,
+                                           boolean acceptPrivacy,
+                                           boolean stayLoggedIn) {
+        lastRegistrationError = "";
+        boolean successful = false;
+        try {
+            System.out.println("   → Filling registration form...");
+            disableHtml5Validation();
+            fillRegistrationForm(firstName, lastName, email, password);
+
+            if (subscribeNewsletter) {
+                System.out.println("   → Enabling newsletter...");
+                setNewsletterSubscription(true);
+            }
+            if (acceptPrivacy) {
+                System.out.println("   → Accepting privacy policy...");
+                acceptPrivacyPolicy();
+            }
+
+            System.out.println("   → Submitting form...");
+            clickContinue();
+
+            String outcome = waitForRegistrationOutcome(8000);
+            if ("success".equals(outcome)) {
+                System.out.println("✓ Registration successful");
+                successful = true;
+                clickContinueAfterSuccess();
+            } else if ("error".equals(outcome)) {
+                System.out.println("⚠ Registration failed: " + lastRegistrationError);
+            } else {
+                if (!lastRegistrationError.isEmpty())             successful = false;
+                else if (isAnyErrorDisplayed())                    successful = false;
+                else if (isStillOnRegisterForm())                  successful = false;
+                else { successful = true; clickContinueAfterSuccess(); }
+            }
+        } catch (Exception e) {
+            System.out.println("✗ Exception during registration: " + e.getMessage());
+            successful = false;
+        } finally {
+            if (!stayLoggedIn) {
+                try { if (isElementDisplayed(logoutLink)) logoutAfterRegistration(); }
+                catch (Exception ex) { try { driver.manage().deleteAllCookies(); } catch (Exception ignored) {} }
+            }
+        }
+        return successful;
+    }
+
+    private String waitForRegistrationOutcome(int timeoutMs) {
+        if (!lastRegistrationError.isEmpty()) return "error";
+
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            try {
+                if (isOnSuccessPage() || isElementDisplayed(continuePrimaryButton)
+                        || isElementDisplayed(continueButtonAfterSuccess)) return "success";
+            } catch (Exception ignored) {}
+
+            try {
+                String err = getAnyErrorMessage();
+                if (!err.isEmpty()) {
+                    lastRegistrationError = err;
+                    return "error";
+                }
+            } catch (Exception ignored) {}
+            waitHelper.customWait(200);
+        }
+        return "unknown";
+    }
+
+    // ==================================================================
+    // Post-success / logout
+    // ==================================================================
     public void clickContinueAfterSuccess() {
         try {
-            System.out.println("   → Looking for the Continue button on the confirmation page...");
             waitHelper.customWait(300);
-
             for (int i = 0; i < 3; i++) {
                 if (!isOnSuccessPage()) return;
-
                 try {
                     try {
                         waitHelper.waitForElementToBeClickable(continuePrimaryButton);
                         scrollToElement(continuePrimaryButton);
                         clickElement(continuePrimaryButton);
                     } catch (Exception ignore) {}
-
                     waitHelper.waitForElementToBeClickable(continueButtonAfterSuccess);
                     scrollToElement(continueButtonAfterSuccess);
                     clickElement(continueButtonAfterSuccess);
                 } catch (Exception e1) {
                     try {
-                        WebElement continueLink = driver.findElement(
-                                By.xpath("//a[normalize-space(text())='Continue']"));
-                        scrollToElement(continueLink);
-                        continueLink.click();
+                        WebElement c = driver.findElement(By.xpath("//a[normalize-space(text())='Continue']"));
+                        scrollToElement(c); c.click();
                     } catch (Exception e2) {
                         try {
-                            WebElement c = (continuePrimaryButton != null) ? continuePrimaryButton :
-                                    driver.findElement(By.cssSelector("a.btn.btn-primary"));
+                            WebElement c = (continuePrimaryButton != null) ? continuePrimaryButton
+                                    : driver.findElement(By.cssSelector("a.btn.btn-primary"));
                             ((JavascriptExecutor) driver).executeScript("arguments[0].click();", c);
                         } catch (Exception ignored) {}
                     }
                 }
-
                 boolean leftSuccess = false;
                 for (int w = 0; w < 10; w++) {
                     waitHelper.customWait(200);
-                    if (!getCurrentUrl().contains("route=account/success")) {
-                        leftSuccess = true;
-                        break;
-                    }
+                    if (!getCurrentUrl().contains("route=account/success")) { leftSuccess = true; break; }
                 }
-                if (leftSuccess) {
-                    System.out.println("✓ Left the success page");
-                    return;
-                }
+                if (leftSuccess) { System.out.println("✓ Left success page"); return; }
             }
-
-            System.out.println("   → Navigating directly to home as fallback...");
             navigateTo(BASE_URL);
-            waitHelper.customWait(500);
         } catch (Exception e) {
-            System.out.println("⚠ Error while leaving success page: " + e.getMessage());
+            System.out.println("⚠ Error leaving success page: " + e.getMessage());
         }
     }
 
     public void logoutAfterRegistration() {
         try {
-            System.out.println("   → Logging out after registration...");
-
             try {
                 waitHelper.waitForElementToBeClickable(myAccountLink);
                 scrollToElement(myAccountLink);
                 clickElement(myAccountLink);
                 waitHelper.customWait(300);
             } catch (Exception ignored) {}
-
             try {
                 waitHelper.waitForElementToBeClickable(logoutLink);
                 scrollToElement(logoutLink);
                 clickElement(logoutLink);
             } catch (Exception e) {
-                System.out.println("⚠ Could not click Logout directly: " + e.getMessage());
+                System.out.println("⚠ Direct logout failed: " + e.getMessage());
             }
-
             boolean onLogout = waitForLogoutPage(5000);
             if (onLogout) {
-                System.out.println("✓ Logout successful");
                 try {
                     if (isElementDisplayed(continuePrimaryButton)) {
                         scrollToElement(continuePrimaryButton);
                         clickElement(continuePrimaryButton);
                     } else {
-                        WebElement cont = driver.findElement(By.cssSelector("a.btn.btn-primary"));
-                        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", cont);
+                        WebElement c = driver.findElement(By.cssSelector("a.btn.btn-primary"));
+                        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", c);
                     }
-                } catch (Exception e) {
-                    System.out.println("⚠ Could not click Continue on Logout: " + e.getMessage());
-                }
-            } else {
-                System.out.println("⚠ Logout page not confirmed, clearing session");
+                } catch (Exception ignored) {}
             }
-
             try { driver.manage().deleteAllCookies(); } catch (Exception ignored) {}
             ensureAtHome();
-
         } catch (Exception e) {
-            System.out.println("⚠ Logout error: " + e.getMessage());
-            try {
-                driver.manage().deleteAllCookies();
-                ensureAtHome();
-            } catch (Exception ignored) {}
+            try { driver.manage().deleteAllCookies(); ensureAtHome(); } catch (Exception ignored) {}
         }
-    }
-
-    // ============================================================
-    // Orchestration
-    // ============================================================
-    public boolean registerUser(String firstName, String lastName, String email, String password) {
-        boolean registrationSuccessful = false;
-        try {
-            System.out.println("   → Filling registration form...");
-            fillRegistrationForm(firstName, lastName, email, password);
-
-            System.out.println("   → Accepting privacy policy...");
-            acceptPrivacyPolicy();
-
-            System.out.println("   → Submitting form...");
-            clickContinue();
-
-            String outcome = waitForRegistrationOutcome(8000);
-
-            if ("success".equals(outcome)) {
-                System.out.println("✓ Registration completed successfully");
-                registrationSuccessful = true;
-                clickContinueAfterSuccess();
-            } else if ("error".equals(outcome)) {
-                System.out.println("⚠ Registration failed - Error: " + getAnyErrorMessage());
-                registrationSuccessful = false;
-            } else {
-                // Ambiguous — decide conservatively
-                boolean stillOnRegister = isStillOnRegisterForm();
-                boolean anyError        = isAnyErrorDisplayed();
-
-                if (anyError) {
-                    System.out.println("⚠ Ambiguous, but error text is present: " + getAnyErrorMessage());
-                    registrationSuccessful = false;
-                } else if (stillOnRegister) {
-                    System.out.println("⚠ Ambiguous and still on register page — treating as FAILURE (defensive)");
-                    System.out.println("   URL: " + getCurrentUrl());
-                    registrationSuccessful = false;
-                } else {
-                    System.out.println("⚠ Ambiguous but URL left register page — assuming success");
-                    registrationSuccessful = true;
-                    clickContinueAfterSuccess();
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("✗ Exception during registration: " + e.getMessage());
-            e.printStackTrace();
-            registrationSuccessful = false;
-        } finally {
-            try {
-                // Only log out when a real session exists (Logout link visible).
-                // The "My Account" aside link is ALWAYS visible, so it must not be used.
-                if (isElementDisplayed(logoutLink)) {
-                    logoutAfterRegistration();
-                } else {
-                    System.out.println("   → No active session to close");
-                }
-            } catch (Exception ex) {
-                System.out.println("⚠ Error closing session: " + ex.getMessage());
-                try { driver.manage().deleteAllCookies(); } catch (Exception ignored) {}
-            }
-        }
-        return registrationSuccessful;
-    }
-
-    /**
-     * Poll for a clear success or failure signal.
-     * Failure is detected from BOTH field-level (#error-*) and alert-level errors.
-     */
-    private String waitForRegistrationOutcome(int timeoutMs) {
-        long end = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < end) {
-            try {
-                if (isOnSuccessPage()) return "success";
-                if (isElementDisplayed(continuePrimaryButton)) return "success";
-                if (isElementDisplayed(continueButtonAfterSuccess)) return "success";
-            } catch (Exception ignored) {}
-
-            try {
-                if (isAnyErrorDisplayed()) return "error";
-            } catch (Exception ignored) {}
-
-            waitHelper.customWait(200);
-        }
-        return "unknown";
     }
 
     private boolean waitForLogoutPage(int timeoutMs) {
@@ -468,9 +421,7 @@ public class RegisterPage extends BasePage {
         while (System.currentTimeMillis() < end) {
             try {
                 if (isElementDisplayed(accountLogoutHeader)
-                        || getCurrentUrl().contains("route=account/logout")) {
-                    return true;
-                }
+                        || getCurrentUrl().contains("route=account/logout")) return true;
             } catch (Exception ignored) {}
             waitHelper.customWait(200);
         }
